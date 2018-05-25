@@ -185,6 +185,13 @@ abstract class Application extends Module
     public $loadedModules = [];
     
     public $db , $loader, $di, $application;
+    public $defaultRoute = 'site', $defaultController = 'index', $defaultAction = 'index';
+    public $requestUrl;
+    public $settings , $router;
+    public $homeUrl = '/';
+    public $adminModule  = ['admin'];
+    public $slug;
+    public $url;
     /**
      * Constructor.
      * @param array $config name-value pairs that will be used to initialize the object properties.
@@ -207,7 +214,7 @@ abstract class Application extends Module
         
         $this->di->set('db', function() use ($config) {
             $db = $config['components']['db'];
-            return new \Phalcon\Db\Adapter\Pdo\Mysql(array(
+            return new \izi\db\Mysql(array(
                 "host"     => $db['host'],
                 "username" => $db['username'],
                 "password" => $db['password'],
@@ -230,34 +237,8 @@ abstract class Application extends Module
             return new \Phalcon\Flash\Session();
         });
         
-        $this->di->set('router',function(){
-            $router = new \Phalcon\Mvc\Router();
-            $router->setDefaultModule('site');
-            
-            $router->add(
-                "/admin",
-                [
-                    "module"     => 'admin',
-                    "controller" => 'index',
-                    "action"     => 'index',
-                    //"params"     => 4,
-                ]
-                );
-            $router->add(
-                
-                "/admin/:controller",
-                [
-                    "module"     => 'admin',
-                    "controller" => 'index',
-                    "action"     => 'index',
-                    //"params"     => 4,
-                ]
-                );
-            $router->add("/about", "About::index");
-            $router->handle();
-            
-            return $router;
-        });
+        $db = $this->db;
+        $this->di->set('router',$this->setRouter($this->di));
         
         /**
          * Application
@@ -278,6 +259,381 @@ abstract class Application extends Module
     
         //Component::__construct($config);
     }
+    
+    
+    private function getDbRouter($di){
+        $server = $this->getServerInfo();
+        foreach($server as $k=>$v){
+            defined($k) or define($k,$v);
+        }
+        $this->requestUrl = URL_PATH != '' ? URL_PATH : '/';
+        /**
+         * Get domain pointer
+         */
+        $s = $this->getDomainInfo();
+        
+        $dma = false;
+        if(!empty($s)){
+            define ('SHOP_TIME_LEFT',countDownDayExpired($s['to_date']));
+            define ('SHOP_TIME_LIFE',($s['to_date']));
+            define ('SHOP_STATUS',($s['status']));
+            define ('__SID__',(float)$s['sid']);
+            define ('__SITE_NAME__',$s['code']);
+            define ('__TEMPLETE_DOMAIN_STATUS__',$s['state']);
+            $defaultModule = $s['module'] != "" ? $s['module'] : $this->defaultRoute;
+            
+            /*
+             *
+             * */
+            
+            $pos = strpos(URL_PATH, '/sajax');
+            if($pos === false){
+                $this->defaultRoute = $defaultModule;
+            }
+            if($s['is_admin'] == 1){
+                if($s['module'] == ""){
+                    $this->defaultRoute = 'admin';
+                }
+                //
+                
+                $router = explode('/', trim(URL_PATH,'/'));
+                
+                if($router[0] != $this->defaultRoute && !in_array($router[0], $this->commonModule)){
+                    $router = array_merge([$this->defaultRoute],$router);
+                    $this->requesUrl = "/" . implode('/', $router);
+                }
+                
+                
+                //
+                $dma = true;
+            }
+            
+        }else{
+            define ('SHOP_STATUS',0);
+            define ('__SID__',0);
+        }
+        define('__DOMAIN_ADMIN__',$dma);
+        define('__IS_SUSPENDED__',false);
+        
+        
+         
+        $this->settings = $this->db->getConfigs('SETTINGS',false,__SID__,false);
+        
+        if(!isset($this->settings['currency']['default'])){
+            $this->c->setDefaultCurrency(1);
+            $this->settings = $this->db->getConfigs('SETTINGS',false,__SID__,false);
+        }
+        //
+        $suffix = isset($this->settings['url_manager']['suffix']) ? $this->settings['url_manager']['suffix']: '';
+        define('URL_SUFFIX', $suffix);
+        //$this->setUrlSuffix($suffix);
+        
+        define('ADMIN_ADDRESS',__DOMAIN_ADMIN__ ? $this->homeUrl : $this->homeUrl .  $this->adminModule[0]);
+        
+        define('ABSOLUTE_ADMIN_ADDRESS',__DOMAIN_ADMIN__ ? ABSOLUTE_DOMAIN : ABSOLUTE_DOMAIN . '/' .  $this->adminModule[0]);
+        
+        
+        
+        
+        // customize
+        $pos = strpos($this->requestUrl, '?');
+        $this->router = trim($pos !== false ? substr($this->requestUrl, 0, $pos) : $this->requestUrl,'/');
+        if(in_array($this->router, ['sitemap.xml','robots.txt'])){
+            $this->router = str_replace(['.txt','.xml'], '', $this->router);
+        }
+        
+        if(URL_SUFFIX != ""){
+            $pos = stripos($this->router,URL_SUFFIX);
+            if($pos !== false){
+                $this->router = substr($this->router, 0, $pos);
+            }
+        }
+        
+        $router = explode("/",$this->router);
+        
+        if(in_array($router[0], $this->getAllModules())){
+            defined('__IS_ADMIN__') or define('__IS_ADMIN__',in_array($router[0], $this->adminModule));
+            defined('__IS_MODULE__') or define('__IS_MODULE__',true);
+            defined('MODULE_ADDRESS') or define('MODULE_ADDRESS',__DOMAIN_ADMIN__ ? $this->homeUrl : $this->homeUrl . $router[0]);
+            $this->defaultRoute = $router[0];
+            unset($router[0]);
+            $router = array_values($router);
+        }else{
+            defined('__IS_ADMIN__') or define('__IS_ADMIN__',false);
+            defined('__IS_MODULE__') or define('__IS_MODULE__',false);
+            defined('MODULE_ADDRESS') or define('MODULE_ADDRESS',$this->homeUrl);
+        }
+        //$filename = Phal::getAlias('@app/components/module_functions/' . $this->defaultRoute . '.php');
+        //if(file_exists($filename)){
+        //    require_once $filename;
+        //}
+        
+        $url = $this->getDetailUrl($router);
+        
+        
+        
+        
+        
+        
+        
+    }
+    
+    public function getDetailUrl($router){
+        $url = '';
+        switch ($this->defaultRoute){
+            case 'site':
+                
+                if(!in_array($router[0], ['tag','tags'])){
+                    foreach ($r = array_reverse($router) as $url){
+                        //$s = \izi\models\Slug::findUrl($url);
+                        $sqlQuery = "SELECT * FROM slugs WHERE url='$url' and sid=".__SID__;
+                        $s = $this->db->fetchOne($sqlQuery);
+                        
+                        if(!empty($s)){
+                            $this->slug = $s;
+                            $this->defaultController = $s['route'];
+                            $this->url = $url;
+                            break;
+                        }
+                    }
+                }
+                 
+                
+                break;
+            case 'admin':
+                
+                defined('ADMIN_VERSION') or define('ADMIN_VERSION', $this->getAdminVersionCode()) ;
+                
+                foreach ($r = $router as $url){
+                    $this->slug = \izi\models\Slug::adminFindByUrl($url);
+                    break;
+                }
+                if(!empty($this->slug)){
+                    $this->slug['hasChild'] = \izi\models\Slug::checkExistedChild($this->slug['id']);
+                    if($this->slug['hasChild']){
+                        $this->slug['route'] = 'default';
+                    }
+                }
+                break;
+        }
+        
+        if(URL_SUFFIX != ""){
+            $pos = stripos($url, URL_SUFFIX);
+            if($pos !== false){
+                $url = substr($url, 0, $pos);
+            }
+        }
+        //view($url);
+        return $url;
+    }
+    
+    public function getAllModules(){
+        return array_keys($this->modules);
+    }
+    
+    private function getDomainInfo($domain = __DOMAIN__){
+        $query = "SELECT " . implode(',', ['a.sid','b.status','b.code','a.is_admin','a.module','b.to_date','a.state']);
+        $query .= " FROM domain_pointer a inner join shops b on a.sid=b.id WHERE a.domain='".__DOMAIN__."'";
+        
+        return $this->db->fetchOne($query );
+    }
+    
+    private function setRouter($di){
+        $router = new \Phalcon\Mvc\Router();
+        
+        /**
+         * 
+         */
+        $dbRouter = $this->getDbRouter($di);
+        
+        /**
+         * 
+         */
+        
+        //view($this->id);
+        
+        $router->setDefaultModule($this->defaultRoute);
+        $nameSpace = '\\' . ($this->defaultRoute) . '\\controllers'; 
+        
+        $router->add(
+            "/{$this->url}",
+            [
+                "module"     => $this->defaultRoute,
+                "controller" => $this->defaultController,
+                "action"     => $this->defaultAction,
+                //"params"     => 4,
+            ]
+            );
+        $router->add(
+            "/{$this->url}/",
+            [
+                "module"     => $this->defaultRoute,
+                "controller" => $this->defaultController,
+                "action"     => $this->defaultAction,
+                //"params"     => 4,
+            ]
+            );
+        $router->add(
+            "/{$this->url}/:action",
+            [
+                "module"     => $this->defaultRoute,
+                "controller" => $this->defaultController,
+                "action"     => 1,
+                //"params"     => 4,
+            ]
+            );
+        $router->add(
+            "/{$this->url}/:action/:params",
+            [
+                "module"     => $this->defaultRoute,
+                "controller" => $this->defaultController,
+                "action"     => 1,
+                "params"     => 2,
+            ]
+            );	 	
+        $router->handle();
+        
+        return $router;
+    }
+    
+    
+    
+    public function getServerInfo(){
+        $s = $_SERVER;
+        $ssl = (!empty($s['HTTPS']) && $s['HTTPS'] == 'on') ? true:false;
+        $sp = strtolower($s['SERVER_PROTOCOL']);
+        $protocol = substr($sp, 0, strpos($sp, '/')) . (($ssl) ? 's' : '');
+        $port = $s['SERVER_PORT'];
+        $port = ((!$ssl && $port=='80') || ($ssl && $port=='443')) ? '' : ':'.$port;
+        $host = isset($s['HTTP_X_FORWARDED_HOST']) ? $s['HTTP_X_FORWARDED_HOST'] : isset($s['HTTP_HOST']) ? $s['HTTP_HOST'] : $s['SERVER_NAME'];
+        $path = ($s['REQUEST_URI'] ? $s['REQUEST_URI'] : $_SERVER['HTTP_X_ORIGINAL_URL']);
+        $url = $protocol . '://' . $host . $port . $path;
+        $pattern = ['/index\.php\//','/index\.php/'];
+        $replacement = ['',''];
+        $url = preg_replace($pattern, $replacement, $url);
+        $a = parse_url($url);
+        return [
+            'FULL_URL'=>$url,
+            'URL_NO_PARAM'=> $a['scheme'].'://'.$a['host'].$port.$a['path'],
+            'URL_WITH_PATH'=>$a['scheme'].'://'.$a['host'].$port.$a['path'],
+            'URL_NOT_SCHEME'=>$a['host'].$port.$a['path'],
+            'ABSOLUTE_DOMAIN'=>$a['scheme'].'://'.$a['host'],
+            'SITE_ADDRESS'=>'/',
+            'SCHEME'=>$a['scheme'],
+            'DOMAIN'=>$a['host'],
+            "__DOMAIN__"=>$a['host'],
+            'DOMAIN_NOT_WWW'=>preg_replace('/www./i','',$a['host'],1),
+            'URL_NON_WWW'=>preg_replace('/www./i','',$a['host'],1),
+            'URL_PORT'=>$port,
+            'URL_PATH'=>$a['path'],
+            '__TIME__'=>time(),
+            'DS' => '/',
+            'ROOT_USER'=>'root',
+            'ADMIN_USER'=>'admin',
+            'DEV_USER'=>'dev',
+            'DEMO_USER'=>'demo',
+            'USER'=>'user'
+        ];
+    }
+    
+    
+    public function getBrowser()
+    {
+        $u_agent = $_SERVER['HTTP_USER_AGENT'];
+        $bname = $ub = 'Unknown';
+        $platform = 'Unknown';
+        $version= "";
+        
+        //First get the platform?
+        if (preg_match('/linux/i', $u_agent)) {
+            $platform = 'linux';
+        }
+        elseif (preg_match('/macintosh|mac os x/i', $u_agent)) {
+            $platform = 'mac';
+        }
+        elseif (preg_match('/windows|win32/i', $u_agent)) {
+            $platform = 'windows';
+        }
+        
+        // Next get the name of the useragent yes seperately and for good reason
+        if(preg_match('/MSIE/i',$u_agent) && !preg_match('/Opera/i',$u_agent))
+        {
+            $bname = 'Internet Explorer';
+            $ub = "MSIE";
+        }
+        elseif(preg_match('/Firefox/i',$u_agent))
+        {
+            $bname = 'Mozilla Firefox';
+            $ub = "Firefox";
+        }
+        elseif(preg_match('/Chrome/i',$u_agent))
+        {
+            $bname = 'Google Chrome';
+            $ub = "Chrome";
+        }
+        elseif(preg_match('/Safari/i',$u_agent))
+        {
+            $bname = 'Apple Safari';
+            $ub = "Safari";
+        }
+        elseif(preg_match('/Opera/i',$u_agent))
+        {
+            $bname = 'Opera';
+            $ub = "Opera";
+        }
+        elseif(preg_match('/Netscape/i',$u_agent))
+        {
+            $bname = 'Netscape';
+            $ub = "Netscape";
+        }
+        
+        // finally get the correct version number
+        $known = array('Version', $ub, 'other');
+        $pattern = '#(?<browser>' . join('|', $known) .
+        ')[/ ]+(?<version>[0-9.|a-zA-Z.]*)#';
+        if (!preg_match_all($pattern, $u_agent, $matches)) {
+            // we have no matching number just continue
+        }
+        
+        // see how many we have
+        $i = count($matches['browser']);
+        if ($i != 1) {
+            //we will have two since we are not using 'other' argument yet
+            //see if version is before or after the name
+            if (strripos($u_agent,"Version") < strripos($u_agent,$ub)){
+                $version= $matches['version'][0];
+            }
+            else {
+                $version= isset($matches['version'][1]) ? $matches['version'][1] : '';
+            }
+        }
+        else {
+            $version= $matches['version'][0];
+        }
+        
+        // check if we have a number
+        if ($version==null || $version=="") {$version="?";}
+        $version = str_replace('.', '_',  $version);
+        $pos = strpos($version,'_');
+        $v = $pos !== false ? substr($version,0, $pos) : $version;
+        return array(
+            //'userAgent' => $u_agent,
+            'name'      => strtolower($bname),
+            'short_name'=> strtolower($ub),
+            'browser' => strtolower($ub),
+            'full_version'   => $version,
+            'version'   => $v,
+            'platform'  => $platform, // window - linux - ios - android
+            'platform_version'  => $platform ,// win10, win8 ...,
+            'device_type' => '', // Desktop or Mobile
+            'device_pointing_method' => '', // Touch or mouse
+            
+            
+            
+        );
+    }
+    
+    
     
     /**
      * Pre-initializes the application.
