@@ -7,7 +7,6 @@
 
 namespace izi\base;
 use Phal;
-use izi\base\InvalidConfigException;
 /**
  * Application is the base class for all application classes.
  *
@@ -116,7 +115,7 @@ abstract class Application extends Module
     /**
      * @var Controller the currently active controller instance
      */
-    public $controller;
+    //public $controller;
     /**
      * @var string|bool the layout that should be applied for views in this application. Defaults to 'main'.
      * If this is false, layout will be disabled.
@@ -182,18 +181,18 @@ abstract class Application extends Module
     /**
      * @var array list of loaded modules indexed by their class names.
      */
-    public $loadedModules = [];
+    public $loadedModules = []; 
     
     public $db , $loader, $di, $application ,$l,$c,$t,$session;
-    public $defaultRoute = 'site', $defaultController = 'index', $defaultAction = 'index';
+    //public $defaultRoute = 'site', $defaultController = 'index', $defaultAction = 'index';
     public $requestUrl;
-    public $settings , $router;
+    public $settings;
     public $homeUrl = '/';
     public $adminModule  = ['admin'];
     public $slug;
     public $url;
     public $config , $contact;
-    public $item;
+    public $item, $category;
     
     public $allowController = [
         'index',
@@ -214,11 +213,12 @@ abstract class Application extends Module
      */
     
     public function initialize($config = null){
-        //view($config,true);
+
     }
     
     public function __construct($config = [])
     {
+        $this->setBasePath(WEB_PATH);
         /**
          * Loader
          */
@@ -261,10 +261,7 @@ abstract class Application extends Module
         /**
          * 
          */
-        
-        
-        //view($this->l,true);
-        
+      
         /**
          * 
          */
@@ -272,7 +269,7 @@ abstract class Application extends Module
         
         Phal::$app = $this;
         $this->l = new \izi\web\Language( $this->di);
-        $this->di->set('router',$this->setRouter($this->di));
+        $this->di->set('router',$this->setPhalconRouter($this->di));
         
         /**
          * Application
@@ -314,7 +311,7 @@ abstract class Application extends Module
             define ('__SID__',(float)$s['sid']);
             define ('__SITE_NAME__',$s['code']);
             define ('__TEMPLETE_DOMAIN_STATUS__',$s['state']);
-            $defaultModule = $s['module'] != "" ? $s['module'] : $this->defaultRoute;
+            $defaultModule = $s['module'] != "" ? $s['module'] : $this->defaultRouter;
             
             /*
              *
@@ -322,18 +319,18 @@ abstract class Application extends Module
             
             $pos = strpos(URL_PATH, '/sajax');
             if($pos === false){
-                $this->defaultRoute = $defaultModule;
+                $this->router = $defaultModule;
             }
             if($s['is_admin'] == 1){
                 if($s['module'] == ""){
-                    $this->defaultRoute = 'admin';
+                    $this->router = 'admin';
                 }
                 //
                 
                 $router = explode('/', trim(URL_PATH,'/'));
                 
-                if($router[0] != $this->defaultRoute && !in_array($router[0], $this->commonModule)){
-                    $router = array_merge([$this->defaultRoute],$router);
+                if($router[0] != $this->router && !in_array($router[0], $this->commonModule)){
+                    $router = array_merge([$this->router],$router);
                     $this->requesUrl = "/" . implode('/', $router);
                 }
                 
@@ -341,7 +338,7 @@ abstract class Application extends Module
                 //
                 $dma = true;
             }
-            
+           
         }else{
             define ('SHOP_STATUS',0);
             define ('__SID__',0);
@@ -371,9 +368,9 @@ abstract class Application extends Module
         
         // customize
         $pos = strpos($this->requestUrl, '?');
-        $this->router = trim($pos !== false ? substr($this->requestUrl, 0, $pos) : $this->requestUrl,'/');
-        if(in_array($this->router, ['sitemap.xml','robots.txt'])){
-            $this->router = str_replace(['.txt','.xml'], '', $this->router);
+        $requestUrl = trim($pos !== false ? substr($this->requestUrl, 0, $pos) : $this->requestUrl,'/');
+        if(in_array($requestUrl, ['sitemap.xml','robots.txt'])){
+            $this->setController(str_replace(['.txt','.xml'], '', $requestUrl));
         }
         
         if(URL_SUFFIX != ""){
@@ -383,21 +380,24 @@ abstract class Application extends Module
             }
         }
         
-        $router = explode("/",$this->router);
+        
+        $router = explode("/",$requestUrl);
         
         if(in_array($router[0], $this->getAllModules())){
             defined('__IS_ADMIN__') or define('__IS_ADMIN__',in_array($router[0], $this->adminModule));
             defined('__IS_MODULE__') or define('__IS_MODULE__',true);
             defined('MODULE_ADDRESS') or define('MODULE_ADDRESS',__DOMAIN_ADMIN__ ? $this->homeUrl : $this->homeUrl . $router[0]);
-            $this->defaultRoute = $router[0];
+            $this->router = $router[0];
             unset($router[0]);
             $router = array_values($router);
+            
         }else{
             defined('__IS_ADMIN__') or define('__IS_ADMIN__',false);
             defined('__IS_MODULE__') or define('__IS_MODULE__',false);
             defined('MODULE_ADDRESS') or define('MODULE_ADDRESS',$this->homeUrl);
+            
         }
-        //$filename = Phal::getAlias('@app/components/module_functions/' . $this->defaultRoute . '.php');
+        //$filename = Phal::getAlias('@app/components/module_functions/' . $this->router . '.php');
         //if(file_exists($filename)){
         //    require_once $filename;
         //}
@@ -433,12 +433,12 @@ abstract class Application extends Module
         
         $this->setHttpsMethod();
         
-        define ('__DEFAULT_MODULE__',$this->defaultRoute);                
+        define ('__DEFAULT_MODULE__',$this->router);                
         
         $this->setModuleRouter($router);
         
         $this->validateSlug($this->slug);
-        //view($this->slug,true);
+
         $this->setDetailUrl($router);
         
         Phal::setAlias('@webroot', dirname($this->getScriptFile()));
@@ -467,7 +467,7 @@ abstract class Application extends Module
         if(strlen(__DETAIL_URL__)>0 && !__IS_SUSPENDED__ && !empty($r)){
             $pos = strpos($r['route'], '/');
             if($pos !== false){
-                $this->defaultRoute = substr($r['route'], 0,$pos);
+                $this->router = substr($r['route'], 0,$pos);
             }
             // Set route[0]
             $router[0] = $r['route'];
@@ -584,7 +584,7 @@ abstract class Application extends Module
             
             
         }elseif(__IS_SUSPENDED__){
-            $this->defaultRoute = 'site';
+            $this->router = 'site';
             $router = ['suspended'];
         }
         
@@ -603,18 +603,16 @@ abstract class Application extends Module
         define('CONTROLLER_ID', isset($r['id']) ? $r['id'] : -1);
         
         defined('__CATEGORY_URL__') or define('__CATEGORY_URL__', __DETAIL_URL__);
-        
-        
-        $this->request->url = "/" . $this->defaultRoute .'/'. implode('/', $router);
-        
-        
-        
-        define('__CATEGORY_ID__', isset($r['id']) ? $r['id'] : (in_array($this->request->url,['/site','/site/','/site/index']) ? 0 : -1));
-        if(URL_SUFFIX != ""){
-            if(strrpos($this->request->url, URL_SUFFIX) !== false){
+              
+        define('__CATEGORY_ID__', isset($r['id']) ? $r['id'] : ($this->controller == 'index' && $this->action == 'index' ? 0 : -1));
+        //if(URL_SUFFIX != ""){
+            //if(strrpos($this->request->url, URL_SUFFIX) !== false){
                 //$request->url = str_replace(URL_SUFFIX, '', $request->url);
-            }
-        }
+            //}
+        //}
+        
+        /** 
+        
         if(URL_SUFFIX != "" && $this->request->url != '/') {
             if(strpos($this->request->url, URL_SUFFIX) === false){
                 $this->request->url .= URL_SUFFIX;
@@ -629,30 +627,25 @@ abstract class Application extends Module
                 $this->request->url = implode('/', $nx);
                 
             }
-        }
+        } */
         
         $this->category = $r;
-        
-        /**
-         * Old propeties
-         * @var unknown
-         */
-        Yii::$_category = $this->category;
+         
         
         define('CHECK_PERMISSION', isset($r['is_permission']) && $r['is_permission'] == 1 ? true : false);
         
         defined('CONTROLLER_TEXT') or define('CONTROLLER_TEXT', __DETAIL_URL__);
         defined('__RCONTROLLER__') or define('__RCONTROLLER__', __DETAIL_URL__);
-        defined('__CONTROLLER__') or define('__CONTROLLER__', $this->defaultRoute);
+        defined('__CONTROLLER__') or define('__CONTROLLER__', $this->router);
         defined('CONTROLLER') or define('CONTROLLER', !empty($r) ? $r['route'] : 'index');
         defined('CONTROLLER_CODE') or define('CONTROLLER_CODE', !empty($r) ? $r['route'] : 'index');
         //
-        
-        
-        
-        $this->setTemplete();
-        
+         
+        $this->getDbTempletePath();
+       
     }
+    
+     
     
     private $_scriptFile;
     public function getScriptFile()
@@ -681,7 +674,7 @@ abstract class Application extends Module
     }
     
     public function setModuleRouter($router){
-        switch ($this->defaultRoute){
+        switch ($this->router){
             case 'admin':
                 
                 defined('ADMIN_VERSION') or define('ADMIN_VERSION', $this->getAdminVersionCode()) ;
@@ -849,7 +842,8 @@ abstract class Application extends Module
     
     public function getDetailUrl($router){
         $url = '';
-        switch ($this->defaultRoute){
+   
+        switch ($this->router){
             case 'site':
                 $rsv_router = array_reverse($router);
                 if(!in_array($router[0], ['tag','tags'])){
@@ -860,8 +854,8 @@ abstract class Application extends Module
                         
                         if(!empty($s)){                           
                             $this->slug = $s;
-                            $this->defaultController = $s['route'];
-                            //$this->url = $url;
+                            $this->setController($s['route']);
+                          
                             $this->url = implode('/',array_reverse($rsv_router));
                             break;
                         }else{
@@ -909,8 +903,12 @@ abstract class Application extends Module
         return $this->db->fetchOne($query );
     }
     
-    private function setRouter($di){
+    private function setPhalconRouter($di){
         $router = new \Phalcon\Mvc\Router();
+        
+        //$this->setController('news');
+        
+        
         
         /**
          * 
@@ -920,33 +918,34 @@ abstract class Application extends Module
         /**
          * 
          */
+            
        
-        $router->setDefaultModule($this->defaultRoute);
-        $nameSpace = '\\' . ($this->defaultRoute) . '\\controllers'; 
+        $router->setDefaultModule($this->router);
+        $nameSpace = '\\' . ($this->router) . '\\controllers'; 
  
         $router->add(
             "/{$this->url}",
             [
-                "module"     => $this->defaultRoute,
-                "controller" => $this->defaultController,
-                "action"     => $this->defaultAction,
+                "module"     => $this->router,
+                "controller" => $this->controller,
+                "action"     => $this->action,
                 //"params"     => 4,
             ]
             );
         $router->add(
             "/{$this->url}/",
             [
-                "module"     => $this->defaultRoute,
-                "controller" => $this->defaultController,
-                "action"     => $this->defaultAction,
+                "module"     => $this->router,
+                "controller" => $this->controller,
+                "action"     => $this->action,
                 //"params"     => 4,
             ]
             );
         $router->add(
             "/{$this->url}/:action",
             [
-                "module"     => $this->defaultRoute,
-                "controller" => $this->defaultController,
+                "module"     => $this->router,
+                "controller" => $this->controller,
                 "action"     => 1,
                 //"params"     => 4,
             ]
@@ -955,8 +954,8 @@ abstract class Application extends Module
         $router->add(
             "/{$this->url}/:action/:params",
             [
-                "module"     => $this->defaultRoute,
-                "controller" => $this->defaultController,
+                "module"     => $this->router,
+                "controller" => $this->controller,
                 "action"     => 1,
                 "params"     => 2,
             ]
@@ -964,8 +963,8 @@ abstract class Application extends Module
         $router->add(
             "/{$this->url}/:action/:params/{param1}",
             [
-                "module"     => $this->defaultRoute,
-                "controller" => $this->defaultController,
+                "module"     => $this->router,
+                "controller" => $this->controller,
                 "action"     => 1,
                 "params"     => 2,
             ]
@@ -973,8 +972,8 @@ abstract class Application extends Module
         $router->add(
             "/{$this->url}/:action/:params/{param1}/{param2}",
             [
-                "module"     => $this->defaultRoute,
-                "controller" => $this->defaultController,
+                "module"     => $this->router,
+                "controller" => $this->controller,
                 "action"     => 1,
                 "params"     => 2,
             ]
@@ -982,8 +981,8 @@ abstract class Application extends Module
         $router->add(
             "/{$this->url}/:action/:params/{param1}/{param2}/{param3}",
             [
-                "module"     => $this->defaultRoute,
-                "controller" => $this->defaultController,
+                "module"     => $this->router,
+                "controller" => $this->controller,
                 "action"     => 1,
                 "params"     => 2,
             ]
@@ -1423,7 +1422,7 @@ abstract class Application extends Module
      */
     public function getDb()
     {
-        return $this->get('db');
+        return $this->db;
     }
     
     /**
