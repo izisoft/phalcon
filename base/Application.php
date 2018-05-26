@@ -7,7 +7,7 @@
 
 namespace izi\base;
 use Phal;
-
+use Phalcon\Mvc\Url;
 /**
  * Application is the base class for all application classes.
  *
@@ -238,6 +238,7 @@ abstract class Application extends Module
         });
         
         $db = $this->db;
+         
         $this->di->set('router',$this->setRouter($this->di));
         
         /**
@@ -382,18 +383,21 @@ abstract class Application extends Module
         $url = '';
         switch ($this->defaultRoute){
             case 'site':
-                
+                $rsv_router = array_reverse($router);
                 if(!in_array($router[0], ['tag','tags'])){
-                    foreach ($r = array_reverse($router) as $url){
+                    foreach ($r = $rsv_router as $k=> $url){
                         //$s = \izi\models\Slug::findUrl($url);
                         $sqlQuery = "SELECT * FROM slugs WHERE url='$url' and sid=".__SID__;
                         $s = $this->db->fetchOne($sqlQuery);
                         
-                        if(!empty($s)){
+                        if(!empty($s)){                           
                             $this->slug = $s;
                             $this->defaultController = $s['route'];
-                            $this->url = $url;
+                            //$this->url = $url;
+                            $this->url = implode('/',array_reverse($rsv_router));
                             break;
+                        }else{
+                            unset($rsv_router[$k]);
                         }
                     }
                 }
@@ -423,7 +427,6 @@ abstract class Application extends Module
                 $url = substr($url, 0, $pos);
             }
         }
-        //view($url);
         return $url;
     }
     
@@ -449,12 +452,10 @@ abstract class Application extends Module
         /**
          * 
          */
-        
-        //view($this->id);
-        
+       
         $router->setDefaultModule($this->defaultRoute);
         $nameSpace = '\\' . ($this->defaultRoute) . '\\controllers'; 
-        
+ 
         $router->add(
             "/{$this->url}",
             [
@@ -482,6 +483,7 @@ abstract class Application extends Module
                 //"params"     => 4,
             ]
             );
+        
         $router->add(
             "/{$this->url}/:action/:params",
             [
@@ -490,9 +492,36 @@ abstract class Application extends Module
                 "action"     => 1,
                 "params"     => 2,
             ]
-            );	 	
+            );
+        $router->add(
+            "/{$this->url}/:action/:params/{url1}",
+            [
+                "module"     => $this->defaultRoute,
+                "controller" => $this->defaultController,
+                // "action"     => 1,
+                // "params"     => 2,
+            ]
+            );
+        $router->add(
+            "/{$this->url}/:action/:params/{url1}/{url2}",
+            [
+                "module"     => $this->defaultRoute,
+                "controller" => $this->defaultController,
+                // "action"     => 1,
+                // "params"     => 2,
+            ]
+            );
+        $router->add(
+            "/{$this->url}/:action/:params/{url1}/{url2}/{url3}",
+            [
+                "module"     => $this->defaultRoute,
+                "controller" => $this->defaultController,
+                // "action"     => 1,
+                // "params"     => 2,
+            ]
+            );
         $router->handle();
-        
+ 
         return $router;
     }
     
@@ -512,6 +541,18 @@ abstract class Application extends Module
         $replacement = ['',''];
         $url = preg_replace($pattern, $replacement, $url);
         $a = parse_url($url);
+        $oldpath = $a['path'];
+        $a['path'] = preg_replace('~/+~', '/', rtrim($a['path'],'/'));
+        if($oldpath != $a['path']){
+            $new_url = $a['scheme'].'://'.$a['host'].$port.$a['path'];
+            if(isset($a['query']) && $a['query'] != ""){
+                $new_url .= '?' . $a['query'];
+            }
+            if($oldpath != '/'){
+                header("Location:" .$new_url,true,301);
+            }
+            
+        }
         return [
             'FULL_URL'=>$url,
             'URL_NO_PARAM'=> $a['scheme'].'://'.$a['host'].$port.$a['path'],

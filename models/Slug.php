@@ -25,4 +25,8 @@ class Slug extends Model
         return Phal::$app->di['db']->fetchOne($sqlQuery);
         //return static::find()->where(['url'=>$url,'sid'=>__SID__])->asArray()->one();
     }
+    
+    public static function getAll(){
+        
+    }
 }

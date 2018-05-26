@@ -34,7 +34,6 @@ class Application  extends \izi\base\Application
     public function handleRequest($request){
         
     }
-    
-     
+         
     
 }

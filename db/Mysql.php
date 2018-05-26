@@ -12,8 +12,7 @@ namespace izi\db;
 
 class Mysql extends \Phalcon\Db\Adapter\Pdo\Mysql
 {
-    
-    
+        
     public function getConfigs($code = false, $lang = __LANG__,$sid=__SID__,$cached=true){
         $langx = $lang == false ? 'all' : $lang;
         $code = $code !== false ? $code : 'SITE_CONFIGS';
