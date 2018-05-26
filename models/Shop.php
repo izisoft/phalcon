@@ -20,15 +20,5 @@ class Shop extends Model
     {
         return "shops";
     }
-    public function getSID(){
-        $r = $this->modelsManager->createBuilder()
-        
-        ->from(['a'=> "domain_pointer"])
-        ->innerJoin('shops','a.sid=b.id','b')
-        ->where('a.domain=:domain:',
-            ['domain'=>__DOMAIN__]
-            )
-            ->columns(['a.sid,b.code,a.is_admin,a.module,b.to_date'])
-            ->getQuery()->getSingleResult()->toArray();
-    }
+  
 }

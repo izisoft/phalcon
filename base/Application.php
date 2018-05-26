@@ -7,7 +7,7 @@
 
 namespace izi\base;
 use Phal;
-use Phalcon\Mvc\Url;
+use izi\base\InvalidConfigException;
 /**
  * Application is the base class for all application classes.
  *
@@ -184,7 +184,7 @@ abstract class Application extends Module
      */
     public $loadedModules = [];
     
-    public $db , $loader, $di, $application;
+    public $db , $loader, $di, $application ,$l,$c,$t,$session;
     public $defaultRoute = 'site', $defaultController = 'index', $defaultAction = 'index';
     public $requestUrl;
     public $settings , $router;
@@ -192,12 +192,31 @@ abstract class Application extends Module
     public $adminModule  = ['admin'];
     public $slug;
     public $url;
+    public $config , $contact;
+    public $item;
+    
+    public $allowController = [
+        'index',
+        'default',
+        'ajax',
+        'sajax',
+        'login',
+        'logout',
+        'error',
+        'forgot'
+    ];
+    
     /**
      * Constructor.
      * @param array $config name-value pairs that will be used to initialize the object properties.
      * Note that the configuration must contain both [[id]] and [[basePath]].
      * @throws InvalidConfigException if either [[id]] or [[basePath]] configuration is missing.
      */
+    
+    public function initialize($config = null){
+        //view($config,true);
+    }
+    
     public function __construct($config = [])
     {
         /**
@@ -237,8 +256,22 @@ abstract class Application extends Module
             return new \Phalcon\Flash\Session();
         });
         
+        $this->session = $this->di['session'];
+        
+        /**
+         * 
+         */
+        
+        
+        //view($this->l,true);
+        
+        /**
+         * 
+         */
         $db = $this->db;
-         
+        
+        Phal::$app = $this;
+        $this->l = new \izi\web\Language( $this->di);
         $this->di->set('router',$this->setRouter($this->di));
         
         /**
@@ -248,7 +281,7 @@ abstract class Application extends Module
         
         $this->application->registerModules($config['modules']);
         
-        Phal::$app = $this;
+        
        
         static::setInstance($this);
         
@@ -372,11 +405,446 @@ abstract class Application extends Module
         $url = $this->getDetailUrl($router);
         
         
+        /**
+         * 
+         */
+        
+        
+        defined('__DETAIL_URL__') or define ('__DETAIL_URL__',$url);
+        if(!__IS_MODULE__){
+            if(strlen($url)>0){
+                if(!empty($this->slug)){
+                    defined('__URL_LANG__') or define('__URL_LANG__', $this->slug['lang']);
+                }
+            }
+            if(!in_array($url, ['ajax','sajax'])){
+                $this->setRedirect($this->slug);
+            }
+            
+        }
+        
+        $this->l->setDefaultLanguage();
+        
+        $this->config = $this->db->getConfigs();
+       
+        $this->setSeoConfig();
+         
+        $this->contact = $this->db->getConfigs('CONTACTS');
+        
+        $this->setHttpsMethod();
+        
+        define ('__DEFAULT_MODULE__',$this->defaultRoute);                
+        
+        $this->setModuleRouter($router);
+        
+        $this->validateSlug($this->slug);
+        //view($this->slug,true);
+        $this->setDetailUrl($router);
+        
+        Phal::setAlias('@webroot', dirname($this->getScriptFile()));
+        Phal::setAlias('@web', '/');
+        Phal::setAlias('@themes', Phal::getAlias('@webroot/themes'));
+        Phal::setAlias('@libs', Phal::getAlias('@web/libs'));
+
+    }
+    
+    
+    public function setDetailUrl($router){
+        
+        
+        //$check_database = false;
+        $private_temp = 0;
+        $controller_style = 0;
+        /**
+         *
+         */
         
         
         
+        $r = $this->slug; //view2(__DETAIL_URL__);
+        
+        $is_detail = false;
+        if(strlen(__DETAIL_URL__)>0 && !__IS_SUSPENDED__ && !empty($r)){
+            $pos = strpos($r['route'], '/');
+            if($pos !== false){
+                $this->defaultRoute = substr($r['route'], 0,$pos);
+            }
+            // Set route[0]
+            $router[0] = $r['route'];
+            //view2($router);
+            //
+            if(__IS_ADMIN__){
+                if($this->slug['hasChild']){
+                    // Set
+                }
+                define('CONTROLLER_CODE', $r['child_code']);
+            }else{
+                define('__ITEM_ID__', $r['item_id']);
+                define('__ITEM_TYPE__', $r['item_type']);
+                
+                $seo = [];
+                switch (__ITEM_TYPE__){
+                    case 1: // Article
+                        $is_detail = true;
+                        $item = \izi\models\Articles::getArticleDetail(__ITEM_ID__);
+                        $r = \izi\models\Slug::getItemCategory(__ITEM_ID__);
+                        //
+                        $this->item = $item;
+                        //
+                        if(isset($item['temp_id']) && $item['temp_id']>0){
+                            $private_temp = $item['temp_id'];
+                        }
+                        //
+                        if(isset($item['style']) && $item['style']>0){
+                            $controller_style = $item['style'];
+                        }
+                        $root = \izi\models\Slug::getRootItem($r);
+                        
+                        // Set seo config
+                        $seo['title'] = isset($item['seo']['title']) && $item['seo']['title'] != "" ? $item['seo']['title'] : $item['title'];
+                        $seo['description'] = isset($item['seo']['description']) && $item['seo']['description'] != "" ?
+                        $item['seo']['description'] : (isset($item['info']) && $item['info'] != "" ? $item['info'] :'');
+                        $seo['keyword'] = (isset($item['seo']['focus_keyword']) && $item['seo']['focus_keyword'] != "" ?
+                            $item['seo']['focus_keyword'] . ',' : (isset($item['focus_keyword']) && $item['focus_keyword'] != "" ?
+                                $item['focus_keyword'] . ',' : '') ) . (isset($item['seo']['keyword']) && $item['seo']['keyword'] != "" ?
+                                    $item['seo']['keyword'] :'');
+                                $seo['og_image'] = isset($item['icon']) ? $item['icon'] : '';
+                                //\izi\web\Shop::setViewedCount(__ITEM_ID__);
+                                break;
+                    case 0: // Site Menu
+                        $is_detail = false;
+                        $r = \izi\models\Slug::getCategory(__ITEM_ID__);
+                        
+                        $root = \izi\models\Slug::getRootItem($r);
+                        
+                        if($r['route'] == 'manual'){
+                            $r['route'] = trim($r['link_target'],'/');
+                        }
+                        //
+                        if(isset($r['temp_id']) && $r['temp_id']>0){
+                            $private_temp = $r['temp_id'];
+                        }
+                        //
+                        if(isset($r['style']) && $r['style']>0){
+                            $controller_style = $r['style'];
+                        }
+                        
+                        // Set seo
+                        $seo['title'] = isset($r['seo']['title']) && $r['seo']['title'] != "" ? $r['seo']['title'] : $r['title'];
+                        $seo['description'] = isset($r['seo']['description']) && $r['seo']['description'] != "" ? $r['seo']['description'] :'';
+                        
+                        $seo['keyword'] = (isset($r['seo']['focus_keyword']) && $r['seo']['focus_keyword'] != "" ?
+                            $r['seo']['focus_keyword'] .',' : (isset($r['focus_keyword']) && $r['focus_keyword'] != "" ? $r['focus_keyword'] .',' : ''))
+                            . (	isset($r['seo']['keyword']) && $r['seo']['keyword'] != "" ? $r['seo']['keyword'] :'');
+                            $seo['og_image'] = isset($r['icon']) ? $r['icon'] : '';
+                            
+                            break;
+                    case 2: // Box
+                        $r = \izi\models\Box::getItem(__ITEM_ID__);
+                        if(!empty($r)){
+                            define('__BOX_ID__', $r['id']);
+                            unset($r['id']);
+                            $seo['title'] = $r['title'];
+                        }
+                        break;
+                    case 3: // Box
+                        //$r = \app\modules\admin\models\Box::getItem($r['item_id']);
+                        //define('__IS_DETAIL__', true);
+                        break;
+                }
+                
+                define('__ROOT_CATEGORY_ID__', isset($root['id']) ? $root['id'] : 0);
+                define('__ROOT_CATEGORY_NAME__', isset($root['title']) ? $root['title'] : '');
+                define('__ROOT_CATEGORY_URL__', isset($root['url']) ? $root['url'] : '');
+                define('CONTROLLER_CODE', $r['route']);
+                
+                if(!empty($seo)){
+                    foreach ($seo as $key=>$value){
+                        $this->config['seo'][$key] = $value;
+                    }
+                }
+                
+            }
+            
+            
+            
+            if(isset($r['spc'])){
+                define('__SPC_VALUE__',$r['spc']);
+            }else{
+                define('__SPC_VALUE__',0);
+            }
+            if(isset($r['lft'])){
+                define('CONTROLLER_LFT', $r['lft']);
+                define('CONTROLLER_RGT', $r['rgt']);
+            }
+            define('__CATEGORY_NAME__',isset($r['title']) ? uh($r['title']) : '');
+            define('__CATEGORY_PARENT_ID__', isset($r['parent_id']) ? $r['parent_id'] : 0);
+            define('__CATEGORY_ACTION_DETAIL__',isset($r['action_detail']) ? $r['action_detail'] : '');
+            define('__CATEGORY_URL__', isset($r['url']) ? $r['url'] : '');
+            
+            
+        }elseif(__IS_SUSPENDED__){
+            $this->defaultRoute = 'site';
+            $router = ['suspended'];
+        }
+        
+        if(__IS_ADMIN__ && empty($this->slug) && __DETAIL_URL__ != "" && !in_array($router[0], $this->allowController)){
+            $router = ['error'];
+        }
+        
+        define('__IS_DETAIL__', $is_detail);
+        
+        defined('PRIVATE_TEMPLETE') or define('PRIVATE_TEMPLETE',$private_temp);
+        
+        defined('CONTROLLER_STYLE') or define('CONTROLLER_STYLE',$controller_style);
+        
+        defined('__ITEM_ID__') or define('__ITEM_ID__', 0);
+        
+        define('CONTROLLER_ID', isset($r['id']) ? $r['id'] : -1);
+        
+        defined('__CATEGORY_URL__') or define('__CATEGORY_URL__', __DETAIL_URL__);
         
         
+        $this->request->url = "/" . $this->defaultRoute .'/'. implode('/', $router);
+        
+        
+        
+        define('__CATEGORY_ID__', isset($r['id']) ? $r['id'] : (in_array($this->request->url,['/site','/site/','/site/index']) ? 0 : -1));
+        if(URL_SUFFIX != ""){
+            if(strrpos($this->request->url, URL_SUFFIX) !== false){
+                //$request->url = str_replace(URL_SUFFIX, '', $request->url);
+            }
+        }
+        if(URL_SUFFIX != "" && $this->request->url != '/') {
+            if(strpos($this->request->url, URL_SUFFIX) === false){
+                $this->request->url .= URL_SUFFIX;
+            }
+            $ux = explode('/', $this->request->url);
+            if(count($ux)>4){
+                $nx = [];
+                $nx[] = $ux[0];
+                $nx[] = $ux[1];
+                $nx[] = $ux[2];
+                $nx[] = $ux[count($ux)-1];
+                $this->request->url = implode('/', $nx);
+                
+            }
+        }
+        
+        $this->category = $r;
+        
+        /**
+         * Old propeties
+         * @var unknown
+         */
+        Yii::$_category = $this->category;
+        
+        define('CHECK_PERMISSION', isset($r['is_permission']) && $r['is_permission'] == 1 ? true : false);
+        
+        defined('CONTROLLER_TEXT') or define('CONTROLLER_TEXT', __DETAIL_URL__);
+        defined('__RCONTROLLER__') or define('__RCONTROLLER__', __DETAIL_URL__);
+        defined('__CONTROLLER__') or define('__CONTROLLER__', $this->defaultRoute);
+        defined('CONTROLLER') or define('CONTROLLER', !empty($r) ? $r['route'] : 'index');
+        defined('CONTROLLER_CODE') or define('CONTROLLER_CODE', !empty($r) ? $r['route'] : 'index');
+        //
+        
+        
+        
+        $this->setTemplete();
+        
+    }
+    
+    private $_scriptFile;
+    public function getScriptFile()
+    {
+        if (isset($this->_scriptFile)) {
+            return $this->_scriptFile;
+        }
+        
+        if (isset($_SERVER['SCRIPT_FILENAME'])) {
+            return $_SERVER['SCRIPT_FILENAME'];
+        }
+        
+        throw new InvalidConfigException('Unable to determine the entry script file path.');
+    }
+    
+    public function validateSlug($slug){
+        
+        if(isset($slug['checksum']) && $slug['checksum'] != ""
+            && $slug['checksum'] != md5(URL_PATH)){
+                // báo link sai & chuyển về link mới
+                $url1 = \izi\models\Slug::getUrl($slug['url']);
+                if(md5($url1) == $slug['checksum']){
+                    header("Location:" .$url1,true,301);
+                }
+        }
+    }
+    
+    public function setModuleRouter($router){
+        switch ($this->defaultRoute){
+            case 'admin':
+                
+                defined('ADMIN_VERSION') or define('ADMIN_VERSION', $this->getAdminVersionCode()) ;
+                
+                foreach ($r = $router as $url){
+                    $this->slug = \izi\models\Slug::adminFindByUrl($url);
+                    break;
+                }
+                if(!empty($this->slug)){
+                    $this->slug['hasChild'] = \izi\models\Slug::checkExistedChild($this->slug['id']);
+                    if($this->slug['hasChild']){
+                        $this->slug['route'] = 'default';
+                    }
+                }
+                break;
+        }
+    }
+    
+    private function setHttpsMethod(){
+        
+        if(isset($this->config['seo']['ssl'])){
+            if(isset($this->config['seo']['ssl'][DOMAIN_NOT_WWW])  && $this->config['seo']['ssl'][DOMAIN_NOT_WWW] == 'on'){
+                if(empty($_SERVER['HTTPS']) || $_SERVER['HTTPS'] == "off"){
+                    if(strpos(DOMAIN, 'beta') !== false){
+                        return true;
+                    }
+                    $redirect = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+                    header('Location: ' .$redirect, true, 301);
+                    exit;
+                }
+                return true;
+                
+            }else{
+                if(isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on"){
+                    $redirect = 'http://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+                    header('Location: ' . $redirect,true , 301);
+                    exit;
+                }
+                return false;
+            }
+        }
+        
+        //
+        $www = isset($this->config['seo']['www']) ? $this->config['seo']['www'] : -1;
+        if(!isset($this->config['seo']['amp'])) {
+            $this->config['seo']['amp'] = [];
+        }
+        switch ($www){
+            case 0:
+                if(strpos(ABSOLUTE_DOMAIN, 'www.') !== false){
+                    header('Location:' . SCHEME  . '://' . URL_NON_WWW . URL_PORT . URL_PATH ,301);
+                    exit;
+                }
+                break;
+            case 1:
+                if(strpos(ABSOLUTE_DOMAIN, 'www.') === false){
+                    header('Location:' . SCHEME  . '://www.' . URL_NON_WWW . URL_PORT . URL_PATH ,301);
+                    exit;
+                }
+                break;
+        }
+        //
+    }
+    
+    
+    public function setSeoConfig(){
+        $seo = $this->db->getConfigs('SEO');
+        if(isset($seo['domain_type']) && $seo['domain_type'] == 'multiple'){
+            $domains = isset($seo['domain']) && $seo['domain'] != '' ? explode(',', $seo['domain']) : [];
+            $sd = [];
+            if(!empty($domains)){
+                foreach ($domains as $domain){
+                    if($domain == DOMAIN){
+                        if(isset($seo[$domain])){
+                            $sd = $seo[$domain];
+                            unset($seo[$domain]);
+                        }
+                    }else{
+                        if(isset($seo[$domain])){
+                            unset($seo[$domain]);
+                        }
+                    }
+                }
+            }
+            $this->config['seo'] = array_merge($sd,$seo);
+            unset($seo);
+        }elseif (isset($seo['domain_type'])){
+            $this->config['seo'] = $seo;unset($seo);
+        }
+        
+        return $this->config['seo'];
+    }
+    
+    private function setRedirect($slug){
+        $r = $this->getRedirect($slug);
+        if($r['validate'] && getAbsoluteUrl($r['url']) != getAbsoluteUrl(URL_PATH)){
+            header("Location:".$r['url'],true,$r['code']);
+        }
+    }
+    
+    private function getRedirect($slug){
+        // check redirect domain
+        $rule = '^' . DOMAIN;
+        
+        $validate = false; $code = 301;
+        
+        //$r = (new \yii\db\Query())->from(self::tableRedirect())->where(['rule'=>$rule,'is_active'=>1,'sid'=>__SID__])->one();
+        $sqlQuery = "SELECT * FROM redirects WHERE rule='$rule' and is_active=1 and sid=".__SID__;
+        $r = $this->db->fetchAll($sqlQuery);
+        
+        if(!empty($r) && $r['target'] != "" && $r['target'] != $rule){
+            $url = SCHEME . '://' . substr($r['target'], 1) . URL_PORT . URL_PATH;
+            return [
+                'url'=>$url,
+                'code'=>$r['code'],
+                'validate'=>true
+            ];
+        }
+        
+        if(!empty($slug)){
+            
+            //$s =  json_decode($slug['redirect'],1);
+            $s =  isset($slug['seo']['redirect']) ? $slug['seo']['redirect'] : [];
+            
+            if(isset($s['target']) && $s['target'] != ""
+                // && $s['target'] != URL_PATH
+                ){
+                    return [
+                        'url'=>$s['target'],
+                        'code'=>$s['code'],
+                        'validate'=>true
+                    ];
+                    
+            }else{
+                
+               // $r = (new \yii\db\Query())->from(self::tableRedirect())->where(['rule'=>[$slug['url'],FULL_URL],'is_active'=>1,'sid'=>__SID__])->one();
+                $sqlQuery = "SELECT * FROM redirects WHERE rule in ('{$slug['url']}','".FULL_URL."') and is_active=1 and sid=".__SID__;
+                $r = $this->db->fetchOne($sqlQuery);
+                if(!empty($r) && $r['target'] != ""){
+                    return [
+                        'url'=>$r['target'],
+                        'code'=>$r['code'],
+                        'validate'=>true
+                    ];
+                }
+            }
+        }
+        else{
+            $rule = __DETAIL_URL__ == '' ? '@' : __DETAIL_URL__;
+            //$r = (new \yii\db\Query())->from(self::tableRedirect())->where(['rule'=>[$rule,FULL_URL],'is_active'=>1,'sid'=>__SID__])->one();
+            $sqlQuery = "SELECT * FROM redirects WHERE rule in ('$rule','".FULL_URL."') and is_active=1 and sid=".__SID__;
+            $r = $this->db->fetchOne($sqlQuery);
+            if(!empty($r) && $r['target'] != ""){
+                return [
+                    'url'=>$r['target'],
+                    'code'=>$r['code'],
+                    'validate'=>true
+                ];
+            }
+            
+        }
+        
+        return ['validate'=>false];
     }
     
     public function getDetailUrl($router){
@@ -494,30 +962,30 @@ abstract class Application extends Module
             ]
             );
         $router->add(
-            "/{$this->url}/:action/:params/{url1}",
+            "/{$this->url}/:action/:params/{param1}",
             [
                 "module"     => $this->defaultRoute,
                 "controller" => $this->defaultController,
-                // "action"     => 1,
-                // "params"     => 2,
+                "action"     => 1,
+                "params"     => 2,
             ]
             );
         $router->add(
-            "/{$this->url}/:action/:params/{url1}/{url2}",
+            "/{$this->url}/:action/:params/{param1}/{param2}",
             [
                 "module"     => $this->defaultRoute,
                 "controller" => $this->defaultController,
-                // "action"     => 1,
-                // "params"     => 2,
+                "action"     => 1,
+                "params"     => 2,
             ]
             );
         $router->add(
-            "/{$this->url}/:action/:params/{url1}/{url2}/{url3}",
+            "/{$this->url}/:action/:params/{param1}/{param2}/{param3}",
             [
                 "module"     => $this->defaultRoute,
                 "controller" => $this->defaultController,
-                // "action"     => 1,
-                // "params"     => 2,
+                "action"     => 1,
+                "params"     => 2,
             ]
             );
         $router->handle();
