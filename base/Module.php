@@ -109,7 +109,7 @@ class Module extends ServiceLocator
      * If action ID is not given, it will take the default value as specified in
      * [[Controller::defaultAction]].
      */
-    public $defaultRoute = 'default';
+    public $defaultRoute = 'site';
 
     /**
      * @var string the root directory of the module.
@@ -144,6 +144,11 @@ class Module extends ServiceLocator
      */
     private $_version;
 
+    private $_defaultRouter = 'site', $_defaultController = 'index', $_defaultAction = 'index';
+    
+    private $_router; // $_module
+    
+    private $_controller, $_action;
 
     /**
      * Constructor.
@@ -152,8 +157,7 @@ class Module extends ServiceLocator
      * @param array $config name-value pairs that will be used to initialize the object properties.
      */
     public function __construct($id, $parent = null, $config = [])
-    {
-        view2($this,true);
+    {        
         $this->id = $id;
         $this->module = $parent;
         parent::__construct($config);
@@ -167,7 +171,7 @@ class Module extends ServiceLocator
      */
     public static function getInstance()
     {
-        view('1',true);
+        
         $class = get_called_class();
         return isset(Phal::$app->loadedModules[$class]) ? Phal::$app->loadedModules[$class] : null;
     }
@@ -260,13 +264,105 @@ class Module extends ServiceLocator
     }
 
     /**
+     * Set & get default router
+     */
+    public function getDefaultRouter()
+    {            
+        return $this->_defaultRouter;
+    }
+    
+    public function setDefaultRouter($router)
+    {
+        $this->_defaultRouter = $router;
+    }
+    
+    
+    /**
+     * Set & get default controller
+     */
+    public function getDefaultController()
+    {        
+        return $this->_defaultController;
+    }
+    
+    public function setDefaultController($controller)
+    {
+        $this->_defaultController = $controller;
+    }
+    
+    /**
+     * Set & get default action
+     */
+    public function getDefaultAction()
+    {
+        return $this->_defaultAction;
+    }
+    
+    public function setDefaultAction($action)
+    {
+        $this->_defaultAction = $action;
+    }
+    
+    /**
+     * Set & get Router
+     */
+    public function getRouter()
+    {
+        if ($this->_router === null) {
+            $this->_router = $this->_defaultRouter;
+        }
+        return $this->_router;
+    }
+    
+    public function setRouter($router)
+    {
+
+        $this->_router = $router;
+       
+    }
+    
+    /**
+     * Set & get Controller
+     */
+    public function getController()
+    {
+        if ($this->_controller === null) {
+            $this->_controller = $this->_defaultController;
+        }
+        return $this->_controller;
+    }
+    
+    public function setController($controller)
+    {
+        $this->_controller = $controller;
+    }
+    
+    
+    /**
+     * Set & get Action
+     */
+    public function getAction()
+    {
+        if ($this->_action === null) {
+            $this->_action = $this->_defaultAction;
+        }
+        return $this->_action;
+    }
+    
+    public function setAction($action)
+    {
+        $this->_action = $action;
+    }
+    
+    
+    /**
      * Returns the directory that contains the view files for this module.
      * @return string the root directory of view files. Defaults to "[[basePath]]/views".
      */
     public function getViewPath()
-    {
+    {        
         if ($this->_viewPath === null) {
-            $this->_viewPath = $this->getBasePath() . DIRECTORY_SEPARATOR . 'views';
+            $this->_viewPath = dirname($this->getBasePath()) . DIRECTORY_SEPARATOR . 'modules' . DIRECTORY_SEPARATOR . $this->getRouter()  . DIRECTORY_SEPARATOR . 'views';
         }
 
         return $this->_viewPath;
@@ -282,6 +378,155 @@ class Module extends ServiceLocator
         $this->_viewPath = Phal::getAlias($path);
     }
 
+    /*
+     * set templete path
+     */
+    private $_templetePath;
+    
+    public function setTempletePath($path){
+        $this->_templetePath = $path;
+    }
+    
+    
+    private $_templeteName ;
+    
+    public function getDbTempletePath(){
+        
+        /**
+         * Get templete name from __SID__
+         */
+        $temp = \izi\models\Shop::getUserTemplete();
+        
+        
+        switch (SHOP_STATUS){
+            
+            default:
+                define('__TEMP_NAME__', __IS_MODULE__ ? $this->getRouter() : ($temp['name'] != "" ? $temp['name'] : 'coming1'));
+                break;
+        }
+        $this->setTempleteName(__TEMP_NAME__);
+        $config['TCID'][__SID__] = !empty($temp) ? $temp['parent_id'] : 0;
+        $config['TID'][__SID__] = !empty($temp) ? $temp['id'] : 0;
+        define('__TID__', $config['TID'][__SID__]);
+        define('__TCID__', $config['TCID'][__SID__]);
+        
+        
+        if($this->getDevice() != 'desktop' && $temp['is_mobile'] == 1){
+            define('__IS_MOBILE_TEMPLETE__' , true );
+            define('__MOBILE_TEMPLETE__' , '/' . $this->_device  );
+        }else {
+            define('__IS_MOBILE_TEMPLETE__', false);
+            define('__MOBILE_TEMPLETE__' , '' );
+        }
+        
+        $themePath = WEB_PATH . '/themes';
+        $viewPath = $this->getViewPath();
+
+        switch ($this->_device){
+            case 'mobile':
+                
+                $dir = $themePath .DIRECTORY_SEPARATOR . __TEMP_NAME__ . __MOBILE_TEMPLETE__;
+                $s = rtrim(Phal::$app->homeUrl,'/') . '/themes/'. __TEMP_NAME__ . __MOBILE_TEMPLETE__;
+                
+                if(!file_exists($dir)){
+                    
+                    $dir = $themePath .'/' . __TEMP_NAME__;
+                    $s = rtrim($this->homeUrl,'/') . '/themes/'.__TEMP_NAME__.'';
+                    $this->is_mobile = false;
+                    $this->setViewPath($viewPath . DIRECTORY_SEPARATOR . __TEMP_NAME__ . __MOBILE_TEMPLETE__);
+                }else{
+                    $this->setViewPath($viewPath . DIRECTORY_SEPARATOR . __TEMP_NAME__);
+                }
+                define('__RSPATH__',$dir);
+                define('__RSDIR__',__IS_MODULE__ ? rtrim(Phal::$app->homeUrl,'/') . '/themes/'.__TEMP_NAME__ : $s);
+                break;
+            default:
+                
+                $dir = $themePath .DIRECTORY_SEPARATOR . __TEMP_NAME__ . __MOBILE_TEMPLETE__;
+                define('__RSPATH__',$dir);
+                define('__RSDIR__',  rtrim(Phal::$app->homeUrl,'/'). '/themes/'.__TEMP_NAME__ . __MOBILE_TEMPLETE__);
+                $this->setViewPath($viewPath . DIRECTORY_SEPARATOR . __TEMP_NAME__);
+                break;
+        }
+        if(__IS_ADMIN__){
+            define ('__VIEW_PATH__',__RSPATH__ . DIRECTORY_SEPARATOR . 'views');
+        }else{
+            
+        }
+         
+        
+        define ('__IS_MOBILE__',$this->is_mobile);
+        define('__LIBS_DIR__',rtrim(Phal::$app->homeUrl,'/') . '/libs');
+        define('__LIBS_PATH__',WEB_PATH . '/libs');
+    }
+    
+    public function getTempletePath()
+    {
+        if ($this->_templetePath === null) {
+            $this->_templetePath = $this->getViewPath();
+            
+            
+            
+            
+        }
+         
+        return $this->_templetePath;
+    }
+    
+    private $_device = 'desktop';
+    public $is_mobile = false;
+    public function getDevice($config=null){
+        if($config == null){
+            $config = Phal::$app->session->get('config');
+        }
+        // Get device
+        if(isset($config['set_device']) && in_array($config['set_device'],['mobile','desktop'])){
+            $this->_device=$config['device']=$config['set_device'];
+            $t = false;
+        }else{
+            $t = true;
+        }
+        
+        //
+        if($t || !isset($config['device'])){
+            $useragent=$_SERVER['HTTP_USER_AGENT'];
+            
+            if(preg_match('/(android|bb\d+|meego).+mobile|(android \d+)|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows (ce|phone)|xda|xiino/i',$useragent)
+                ||preg_match('/1207|6310|6590|3gso|4thp|50[1-6]i|770s|802s|a wa|abac|ac(er|oo|s\-)|ai(ko|rn)|al(av|ca|co)|amoi|an(ex|ny|yw)|aptu|ar(ch|go)|as(te|us)|attw|au(di|\-m|r |s )|avan|be(ck|ll|nq)|bi(lb|rd)|bl(ac|az)|br(e|v)w|bumb|bw\-(n|u)|c55\/|capi|ccwa|cdm\-|cell|chtm|cldc|cmd\-|co(mp|nd)|craw|da(it|ll|ng)|dbte|dc\-s|devi|dica|dmob|do(c|p)o|ds(12|\-d)|el(49|ai)|em(l2|ul)|er(ic|k0)|esl8|ez([4-7]0|os|wa|ze)|fetc|fly(\-|_)|g1 u|g560|gene|gf\-5|g\-mo|go(\.w|od)|gr(ad|un)|haie|hcit|hd\-(m|p|t)|hei\-|hi(pt|ta)|hp( i|ip)|hs\-c|ht(c(\-| |_|a|g|p|s|t)|tp)|hu(aw|tc)|i\-(20|go|ma)|i230|iac( |\-|\/)|ibro|idea|ig01|ikom|im1k|inno|ipaq|iris|ja(t|v)a|jbro|jemu|jigs|kddi|keji|kgt( |\/)|klon|kpt |kwc\-|kyo(c|k)|le(no|xi)|lg( g|\/(k|l|u)|50|54|\-[a-w])|libw|lynx|m1\-w|m3ga|m50\/|ma(te|ui|xo)|mc(01|21|ca)|m\-cr|me(rc|ri)|mi(o8|oa|ts)|mmef|mo(01|02|bi|de|do|t(\-| |o|v)|zz)|mt(50|p1|v )|mwbp|mywa|n10[0-2]|n20[2-3]|n30(0|2)|n50(0|2|5)|n7(0(0|1)|10)|ne((c|m)\-|on|tf|wf|wg|wt)|nok(6|i)|nzph|o2im|op(ti|wv)|oran|owg1|p800|pan(a|d|t)|pdxg|pg(13|\-([1-8]|c))|phil|pire|pl(ay|uc)|pn\-2|po(ck|rt|se)|prox|psio|pt\-g|qa\-a|qc(07|12|21|32|60|\-[2-7]|i\-)|qtek|r380|r600|raks|rim9|ro(ve|zo)|s55\/|sa(ge|ma|mm|ms|ny|va)|sc(01|h\-|oo|p\-)|sdk\/|se(c(\-|0|1)|47|mc|nd|ri)|sgh\-|shar|sie(\-|m)|sk\-0|sl(45|id)|sm(al|ar|b3|it|t5)|so(ft|ny)|sp(01|h\-|v\-|v )|sy(01|mb)|t2(18|50)|t6(00|10|18)|ta(gt|lk)|tcl\-|tdg\-|tel(i|m)|tim\-|t\-mo|to(pl|sh)|ts(70|m\-|m3|m5)|tx\-9|up(\.b|g1|si)|utst|v400|v750|veri|vi(rg|te)|vk(40|5[0-3]|\-v)|vm40|voda|vulc|vx(52|53|60|61|70|80|81|83|85|98)|w3c(\-| )|webc|whit|wi(g |nc|nw)|wmlb|wonu|x700|yas\-|your|zeto|zte\-/i',substr($useragent,0,4))){
+                    $this->_device = 'mobile';
+                    $this->is_mobile = true;
+            }
+            $config['device'] = $this->_device;
+        }else{
+            $this->_device = $config['device'];
+        }
+        Phal::$app->session->set('config', $config);
+        return $this->_device;
+    }
+    /**
+     * Returns the directory that contains layout view files for this module.
+     * @return string the root directory of layout files. Defaults to "[[viewPath]]/layouts".
+     */
+    public function getTempleteName()
+    {
+        if ($this->_templeteName === null) {
+            $this->_templeteName = 'coming1';
+        }
+
+        return $this->_templeteName;
+    }
+
+    /**
+     * Sets the directory that contains the layout files.
+     * @param string $path the root directory or [path alias](guide:concept-aliases) of layout files.
+     * @throws InvalidArgumentException if the directory is invalid
+     */
+    public function setTempleteName($name)
+    {
+        $this->_templeteName = $name;
+    }
+    
+    
     /**
      * Returns the directory that contains layout view files for this module.
      * @return string the root directory of layout files. Defaults to "[[viewPath]]/layouts".
@@ -291,10 +536,10 @@ class Module extends ServiceLocator
         if ($this->_layoutPath === null) {
             $this->_layoutPath = $this->getViewPath() . DIRECTORY_SEPARATOR . 'layouts';
         }
-
+        
         return $this->_layoutPath;
     }
-
+    
     /**
      * Sets the directory that contains the layout files.
      * @param string $path the root directory or [path alias](guide:concept-aliases) of layout files.

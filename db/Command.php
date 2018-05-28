@@ -197,6 +197,7 @@ class Command extends Component
      */
     public function getRawSql()
     {
+        //view($this->params);
         if (empty($this->params)) {
             return $this->_sql;
         }
@@ -353,10 +354,12 @@ class Command extends Component
      */
     public function bindValues($values)
     {
+        //view($values);
         if (empty($values)) {
             return $this;
         }
 
+ 
         $schema = $this->db->getSchema();
         foreach ($values as $name => $value) {
             if (is_array($value)) { // TODO: Drop in Yii 2.1
@@ -366,7 +369,7 @@ class Command extends Component
                 $this->_pendingParams[$name] = [$value->getValue(), $value->getType()];
                 $this->params[$name] = $value->getValue();
             } else {
-                $type = $schema->getPdoType($value);
+                $type = 2;
                 $this->_pendingParams[$name] = [$value, $type];
                 $this->params[$name] = $value;
             }
