@@ -234,10 +234,10 @@ abstract class Application extends Module
         $this->di->set('db', function() use ($config) {
             $db = $config['components']['db'];
             return new \izi\db\Mysql(array(
-                "host"     => $db['host'],
-                "username" => $db['username'],
-                "password" => $db['password'],
-                "dbname"   => $db['dbname'],
+                "host"     => dString($db['host']),
+                "username" => dString($db['username']),
+                "password" => dString($db['password']),
+                "dbname"   => dString($db['dbname']),
                 "options" => array(
                     \PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES ' . $db['charset']
                 )
